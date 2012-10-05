@@ -12,7 +12,7 @@ gem 'jquery-rails'
 gem 'turbolinks'
 gem 'coffee-rails', github: 'rails/coffee-rails'
 
-gem 'journey', github: 'rails/journey', branch: 'master'
+gem 'journey', github: 'drogus/journey', branch: 'master'
 
 gem 'activerecord-deprecated_finders', github: 'rails/activerecord-deprecated_finders', branch: 'master'
 
