@@ -2,6 +2,7 @@ require "active_record/relation/from_clause"
 require "active_record/relation/query_attribute"
 require "active_record/relation/where_clause"
 require "active_record/relation/where_clause_factory"
+require "active_record/associations/alias_tracker"
 require "active_model/forbidden_attributes_protection"
 
 module ActiveRecord
@@ -939,8 +940,14 @@ module ActiveRecord
       def build_arel
         arel = Arel::SelectManager.new(table)
 
-        build_joins(arel, joins_values.flatten) unless joins_values.empty?
-        build_left_outer_joins(arel, left_outer_joins_values.flatten) unless left_outer_joins_values.empty?
+        alias_tracker = ActiveRecord::Associations::AliasTracker.create_with_joins(
+          @klass.connection,
+          @klass.table_name,
+          joins_values.flatten | left_outer_joins_values.flatten
+        )
+
+        build_joins(arel, joins_values.flatten, alias_tracker) unless joins_values.empty?
+        build_left_outer_joins(arel, left_outer_joins_values.flatten, alias_tracker) unless left_outer_joins_values.empty?
 
         arel.where(where_clause.ast) unless where_clause.empty?
         arel.having(having_clause.ast) unless having_clause.empty?
@@ -971,7 +978,7 @@ module ActiveRecord
         end
       end
 
-      def build_left_outer_joins(manager, outer_joins)
+      def build_left_outer_joins(manager, outer_joins, alias_tracker)
         buckets = outer_joins.group_by do |join|
           case join
           when Hash, Symbol, Array
@@ -981,10 +988,10 @@ module ActiveRecord
           end
         end
 
-        build_join_query(manager, buckets, Arel::Nodes::OuterJoin)
+        build_join_query(manager, buckets, Arel::Nodes::OuterJoin, alias_tracker)
       end
 
-      def build_joins(manager, joins)
+      def build_joins(manager, joins, alias_tracker)
         buckets = joins.group_by do |join|
           case join
           when String
@@ -1000,10 +1007,10 @@ module ActiveRecord
           end
         end
 
-        build_join_query(manager, buckets, Arel::Nodes::InnerJoin)
+        build_join_query(manager, buckets, Arel::Nodes::InnerJoin, alias_tracker)
       end
 
-      def build_join_query(manager, buckets, join_type)
+      def build_join_query(manager, buckets, join_type, alias_tracker)
         buckets.default = []
 
         association_joins         = buckets[:association_join]
@@ -1016,7 +1023,8 @@ module ActiveRecord
         join_dependency = ActiveRecord::Associations::JoinDependency.new(
           @klass,
           association_joins,
-          join_list
+          join_list,
+          alias_tracker: alias_tracker
         )
 
         join_infos = join_dependency.join_constraints stashed_association_joins, join_type
